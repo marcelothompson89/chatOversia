@@ -62,10 +62,20 @@ class QueryProcessor:
         filters = {}
         query_lower = query.lower()
         
-        # Detectar fechas específicas en formato DD/MM/YYYY o YYYY-MM-DD
+        # Detectar rangos explícitos "del X al Y" o "desde X hasta Y"
+        range_pattern = r'(?:del|desde)\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})\s+(?:al|hasta)\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})'
+        match = re.search(range_pattern, query_lower)
+        if match:
+            date1, date2 = match.groups()
+            filters["date_from"] = normalize_date(date1)
+            filters["date_to"] = normalize_date(date2)
+            return filters
+
+        # Detectar fechas específicas en formatos DD/MM/YYYY, DD-MM-YYYY,
+        # DD.MM.YYYY o YYYY-MM-DD
         date_patterns = [
-            r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})',  # DD/MM/YYYY o DD-MM-YYYY
-            r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',  # YYYY-MM-DD o YYYY/MM/DD
+            r'(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})',  # DD/MM/YYYY o DD-MM-YYYY
+            r'(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})',  # YYYY-MM-DD o YYYY/MM/DD
         ]
         
         for pattern in date_patterns:
@@ -75,38 +85,47 @@ class QueryProcessor:
                     # Una sola fecha
                     if pattern == date_patterns[0]:  # DD/MM/YYYY
                         day, month, year = matches[0]
-                        # Mantener ambos formatos para la búsqueda
-                        filters["specific_date"] = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-                        
                     else:  # YYYY-MM-DD
                         year, month, day = matches[0]
-                        filters["specific_date"] = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                    filters["specific_date"] = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
         
         # Detectar períodos relativos
         if not filters:
             today = datetime.now()
-            if "último mes" in query_lower or "mes pasado" in query_lower:
+            if "último mes" in query_lower or "ultimo mes" in query_lower or "mes pasado" in query_lower:
                 filters["date_from"] = (today - timedelta(days=30)).strftime("%Y-%m-%d")
                 filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif "última semana" in query_lower or "semana pasada" in query_lower:
+            elif "última semana" in query_lower or "ultima semana" in query_lower or "semana pasada" in query_lower:
                 filters["date_from"] = (today - timedelta(days=7)).strftime("%Y-%m-%d")
                 filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif "últimos" in query_lower and "días" in query_lower:
+            elif ("últimos" in query_lower or "ultimos" in query_lower) and ("días" in query_lower or "dias" in query_lower):
                 # Buscar número de días
-                match = re.search(r'últimos\s+(\d+)\s+días', query_lower)
+                match = re.search(r'(?:últimos|ultimos)\s+(\d+)\s+(?:días|dias)', query_lower)
                 if match:
                     days = int(match.group(1))
                     filters["date_from"] = (today - timedelta(days=days)).strftime("%Y-%m-%d")
                     filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif any(month in query_lower for month in ["enero", "febrero", "marzo", "abril", "mayo", "junio", 
-                                                        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]):
+            elif any(re.search(rf"\b{m}\b", query_lower) for m in [
+                "enero", "ene", "febrero", "feb", "marzo", "mar", "abril", "abr", "mayo", "may", "junio", "jun",
+                "julio", "jul", "agosto", "ago", "septiembre", "sep", "set", "octubre", "oct", "noviembre", "nov",
+                "diciembre", "dic"]):
                 # Detectar mes específico
                 months_map = {
-                    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-                    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+                    "enero": 1, "ene": 1,
+                    "febrero": 2, "feb": 2,
+                    "marzo": 3, "mar": 3,
+                    "abril": 4, "abr": 4,
+                    "mayo": 5, "may": 5,
+                    "junio": 6, "jun": 6,
+                    "julio": 7, "jul": 7,
+                    "agosto": 8, "ago": 8,
+                    "septiembre": 9, "sep": 9, "set": 9,
+                    "octubre": 10, "oct": 10,
+                    "noviembre": 11, "nov": 11,
+                    "diciembre": 12, "dic": 12
                 }
                 for month_name, month_num in months_map.items():
-                    if month_name in query_lower:
+                    if re.search(rf"\b{month_name}\b", query_lower):
                         # Buscar año asociado
                         year_match = re.search(r'\b(20\d{2})\b', query)
                         year = int(year_match.group(1)) if year_match else today.year
@@ -545,31 +564,32 @@ class ImprovedChatbot:
             return f"Error al generar el resumen: {str(e)}"
 
 # ─── FUNCIONES AUXILIARES ────────────────────────────────────────────────────────
+def normalize_date(date_str: str) -> str:
+    """Convierte una fecha en distintos formatos a YYYY-MM-DD"""
+    parts = re.split(r'[\/\.-]', date_str)
+    if len(parts[0]) == 4:
+        year, month, day = parts
+    else:
+        day, month, year = parts
+    return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+
 def parse_date_command(command: str) -> Optional[tuple]:
     """Parsea comandos de búsqueda por fecha"""
-    # Buscar patrones de fecha
+    # Buscar patrones de fecha, aceptando distintos separadores
     patterns = [
-        r'desde\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4})\s+hasta\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4})',
-        r'entre\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4})\s+y\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4})',
-        r'(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s+a\s+(\d{4}[/-]\d{1,2}[/-]\d{1,2})',
+        r'desde\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})\s+hasta\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})',
+        r'entre\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})\s+y\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})',
+        r'del\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})\s+al\s+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})',
+        r'(\d{4}[\/\.\-]\d{1,2}[\/\.\-]\d{1,2})\s+a[l]?\s+(\d{4}[\/\.\-]\d{1,2}[\/\.\-]\d{1,2})',
     ]
     
     for pattern in patterns:
-        match = re.search(pattern, command)
+        match = re.search(pattern, command, re.IGNORECASE)
         if match:
             date1, date2 = match.groups()
-            
-            # Convertir formato DD/MM/YYYY a YYYY-MM-DD si es necesario
-            if '/' in date1 and date1.count('/') == 2:
-                parts = date1.split('/')
-                if len(parts[2]) == 4:  # DD/MM/YYYY
-                    date1 = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-            
-            if '/' in date2 and date2.count('/') == 2:
-                parts = date2.split('/')
-                if len(parts[2]) == 4:  # DD/MM/YYYY
-                    date2 = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-            
+            date1 = normalize_date(date1)
+            date2 = normalize_date(date2)
             return (date1, date2)
     
     return None
