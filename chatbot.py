@@ -452,12 +452,15 @@ class ImprovedChatbot:
                         "country": doc.metadata.get("country", ""),
                         "institution": doc.metadata.get("institution", ""),
                         "id": doc.metadata.get("id", ""),
+                        "source_url": doc.metadata.get("source_url", ""),
                         "excerpt": doc.page_content[:200] + "..."
                     }
                     response["sources"].append(source_info)
                     
                     print(f"\n[{i+1}] {source_info['title']}")
                     print(f"    📅 {source_info['date']}")
+                    if source_info['source_url']:
+                        print(f"    🔗 {source_info['source_url']}")
                     print(f"    🌍 {source_info['country']}")
                     if source_info['category']:
                         print(f"    📁 {source_info['category']}")
