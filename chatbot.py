@@ -146,8 +146,14 @@ class QueryProcessor:
     @staticmethod
     def detect_country(query: str) -> Optional[str]:
         """Detecta el país mencionado en la consulta"""
-        query_lower = query.lower()
-        
+        def normalize(text: str) -> str:
+            import unicodedata
+            text = text.lower()
+            text = unicodedata.normalize('NFKD', text)
+            return ''.join(c for c in text if not unicodedata.combining(c))
+
+        query_norm = normalize(query)
+
         country_mapping = {
             "argentina": "Argentina",
             "méxico": "México",
@@ -165,11 +171,16 @@ class QueryProcessor:
             "bolivia": "Bolivia",
             "estados unidos": "Estados Unidos",
             "usa": "Estados Unidos",
-            "eeuu": "Estados Unidos"
+            "eeuu": "Estados Unidos",
+            "ee.uu.": "Estados Unidos",
+            "ee.uu": "Estados Unidos",
+            "ee uu": "Estados Unidos",
+            "u.s.a.": "Estados Unidos",
+            "eua": "Estados Unidos"
         }
-        
+
         for key, value in country_mapping.items():
-            if key in query_lower:
+            if normalize(key) in query_norm:
                 return value
         
         return None
