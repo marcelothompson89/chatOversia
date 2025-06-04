@@ -23,6 +23,19 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+required_vars = {
+    "SUPABASE_URL": SUPABASE_URL,
+    "SUPABASE_KEY": SUPABASE_KEY,
+    "OPENAI_API_KEY": OPENAI_API_KEY,
+}
+missing = [name for name, val in required_vars.items() if not val]
+if missing:
+    missing_str = ", ".join(missing)
+    raise SystemExit(
+        f"Missing environment variables: {missing_str}."
+        " Please set them in your .env file or environment."
+    )
+
 # ─── CLIENTES ────────────────────────────────────────────────────────────────────
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
